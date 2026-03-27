@@ -45,6 +45,15 @@ const HeartbeatConfigSchema = z
   })
   .optional();
 
+const HttpChannelSchema = z
+  .object({
+    enabled: z.boolean().optional().default(true),
+    port: z.number().optional().default(3030),
+    host: z.string().optional().default('127.0.0.1'),
+    password: z.string().optional(),
+  })
+  .optional();
+
 const GatewayConfigSchema = z.object({
   gateway: z
     .object({
@@ -64,6 +73,7 @@ const GatewayConfigSchema = z.object({
           allowFrom: z.array(z.string()).optional(),
         })
         .optional(),
+      http: HttpChannelSchema,
     })
     .optional(),
   bindings: z
@@ -81,6 +91,13 @@ const GatewayConfigSchema = z.object({
     .optional()
     .default([]),
 });
+
+export type HttpChannelConfig = {
+  enabled: boolean;
+  port: number;
+  host: string;
+  password?: string;
+};
 
 export type GatewayConfig = {
   gateway: {
@@ -109,6 +126,7 @@ export type GatewayConfig = {
       accounts: Record<string, z.infer<typeof WhatsAppAccountSchema>>;
       allowFrom: string[];
     };
+    http?: HttpChannelConfig;
   };
   bindings: Array<{
     agentId: string;
@@ -171,6 +189,14 @@ export function loadGatewayConfig(overridePath?: string): GatewayConfig {
         accounts: parsed.channels?.whatsapp?.accounts ?? {},
         allowFrom: parsed.channels?.whatsapp?.allowFrom ?? [],
       },
+      http: parsed.channels?.http
+        ? {
+            enabled: parsed.channels.http.enabled ?? true,
+            port: parsed.channels.http.port ?? 3030,
+            host: parsed.channels.http.host ?? '127.0.0.1',
+            password: parsed.channels.http.password,
+          }
+        : undefined,
     },
     bindings: parsed.bindings ?? [],
   };

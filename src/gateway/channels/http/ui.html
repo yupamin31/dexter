@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dexter</title>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --border: #30363d;
+    --text: #e6edf3;
+    --text-muted: #8b949e;
+    --accent: #58a6ff;
+    --accent-dim: #1f3c6d;
+    --tool-bg: #1c2128;
+    --tool-border: #388bfd30;
+    --user-bg: #1f3c6d;
+    --error: #f85149;
+    --success: #3fb950;
+  }
+
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; }
+
+  #app { display: flex; flex-direction: column; height: 100%; max-width: 860px; margin: 0 auto; padding: 0 16px; }
+
+  header { padding: 16px 0 12px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+  header h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.3px; }
+  #status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); transition: background 0.3s; flex-shrink: 0; }
+  #status-dot.connected { background: var(--success); }
+  #status-dot.error { background: var(--error); }
+  #status-label { font-size: 12px; color: var(--text-muted); margin-left: 2px; }
+
+  #messages { flex: 1; overflow-y: auto; padding: 20px 0; display: flex; flex-direction: column; gap: 20px; scroll-behavior: smooth; }
+
+  .msg { display: flex; flex-direction: column; gap: 6px; }
+  .msg.user { align-items: flex-end; }
+  .msg.assistant { align-items: flex-start; }
+
+  .bubble { padding: 10px 14px; border-radius: 12px; max-width: 78%; word-break: break-word; }
+  .user .bubble { background: var(--user-bg); border-radius: 12px 12px 2px 12px; }
+  .assistant .bubble { background: var(--surface); border: 1px solid var(--border); border-radius: 2px 12px 12px 12px; }
+
+  .bubble p { margin-bottom: 8px; }
+  .bubble p:last-child { margin-bottom: 0; }
+  .bubble code { background: #0d1117; border: 1px solid var(--border); padding: 1px 5px; border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, monospace; }
+  .bubble pre { background: #0d1117; border: 1px solid var(--border); border-radius: 8px; padding: 12px; overflow-x: auto; margin: 8px 0; }
+  .bubble pre code { background: none; border: none; padding: 0; }
+  .bubble h1, .bubble h2, .bubble h3 { margin: 10px 0 4px; font-size: 15px; }
+  .bubble ul, .bubble ol { padding-left: 20px; margin: 6px 0; }
+  .bubble table { border-collapse: collapse; width: 100%; margin: 8px 0; font-size: 13px; }
+  .bubble th, .bubble td { border: 1px solid var(--border); padding: 5px 10px; text-align: left; }
+  .bubble th { background: var(--tool-bg); }
+
+  .tools { display: flex; flex-direction: column; gap: 4px; max-width: 78%; }
+  .tool-event { background: var(--tool-bg); border: 1px solid var(--tool-border); border-radius: 8px; padding: 6px 10px; font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
+  .tool-event .icon { font-size: 11px; flex-shrink: 0; }
+  .tool-event .label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tool-event .duration { color: var(--text-muted); font-size: 11px; flex-shrink: 0; }
+  .tool-event.thinking .icon::before { content: '💭'; }
+  .tool-event.tool_start .icon::before { content: '⚙️'; }
+  .tool-event.tool_end .icon::before { content: '✓'; color: var(--success); }
+  .tool-event.tool_error .icon::before { content: '✗'; color: var(--error); }
+
+  .typing { display: flex; gap: 4px; align-items: center; padding: 10px 14px; }
+  .typing span { width: 6px; height: 6px; background: var(--text-muted); border-radius: 50%; animation: bounce 1.2s infinite; }
+  .typing span:nth-child(2) { animation-delay: 0.2s; }
+  .typing span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes bounce { 0%,60%,100% { transform: translateY(0); } 30% { transform: translateY(-6px); } }
+
+  #input-area { padding: 14px 0 20px; border-top: 1px solid var(--border); display: flex; gap: 10px; flex-shrink: 0; }
+  #input { flex: 1; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; color: var(--text); font-size: 14px; font-family: inherit; resize: none; outline: none; max-height: 160px; line-height: 1.5; transition: border-color 0.2s; }
+  #input:focus { border-color: var(--accent); }
+  #input::placeholder { color: var(--text-muted); }
+  #send { background: var(--accent); border: none; border-radius: 10px; width: 40px; height: 40px; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; align-self: flex-end; transition: opacity 0.2s; }
+  #send:hover { opacity: 0.85; }
+  #send:disabled { opacity: 0.4; cursor: not-allowed; }
+  #send svg { width: 18px; height: 18px; fill: white; }
+
+  #password-screen { position: fixed; inset: 0; background: var(--bg); display: flex; align-items: center; justify-content: center; z-index: 10; }
+  #password-screen.hidden { display: none; }
+  .pw-box { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 32px; width: 320px; display: flex; flex-direction: column; gap: 14px; }
+  .pw-box h2 { font-size: 16px; text-align: center; }
+  .pw-box input { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; color: var(--text); font-size: 14px; outline: none; }
+  .pw-box input:focus { border-color: var(--accent); }
+  .pw-box button { background: var(--accent); border: none; border-radius: 8px; padding: 10px; color: white; font-size: 14px; cursor: pointer; }
+  .pw-box .pw-error { color: var(--error); font-size: 12px; text-align: center; min-height: 16px; }
+</style>
+</head>
+<body>
+
+<!-- Password screen (shown only when server is password-protected) -->
+<div id="password-screen" class="hidden">
+  <div class="pw-box">
+    <h2>Dexter</h2>
+    <input type="password" id="pw-input" placeholder="パスワード" autocomplete="current-password">
+    <button id="pw-submit">接続</button>
+    <div class="pw-error" id="pw-error"></div>
+  </div>
+</div>
+
+<div id="app">
+  <header>
+    <div id="status-dot"></div>
+    <h1>Dexter</h1>
+    <span id="status-label">接続中...</span>
+  </header>
+  <div id="messages"></div>
+  <div id="input-area">
+    <textarea id="input" rows="1" placeholder="質問を入力... (Shift+Enter で改行)" disabled></textarea>
+    <button id="send" disabled>
+      <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+    </button>
+  </div>
+</div>
+
+<script>
+  marked.setOptions({ breaks: true, gfm: true });
+
+  const sessionId = sessionStorage.getItem('dexterSessionId') || crypto.randomUUID();
+  sessionStorage.setItem('dexterSessionId', sessionId);
+
+  let ws = null;
+  let password = sessionStorage.getItem('dexterPassword') || '';
+  let currentAssistantEl = null;
+  let currentToolsEl = null;
+  let busy = false;
+
+  const $ = id => document.getElementById(id);
+  const statusDot = $('status-dot');
+  const statusLabel = $('status-label');
+  const messagesEl = $('messages');
+  const inputEl = $('input');
+  const sendBtn = $('send');
+  const pwScreen = $('password-screen');
+
+  function setStatus(state, label) {
+    statusDot.className = state;
+    statusLabel.textContent = label;
+  }
+
+  function scrollBottom() {
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  function addUserMessage(text) {
+    const div = document.createElement('div');
+    div.className = 'msg user';
+    div.innerHTML = `<div class="bubble">${escapeHtml(text).replace(/\n/g, '<br>')}</div>`;
+    messagesEl.appendChild(div);
+    scrollBottom();
+  }
+
+  function beginAssistantMessage() {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'msg assistant';
+
+    const toolsDiv = document.createElement('div');
+    toolsDiv.className = 'tools';
+    wrapper.appendChild(toolsDiv);
+
+    const typingDiv = document.createElement('div');
+    typingDiv.className = 'typing';
+    typingDiv.innerHTML = '<span></span><span></span><span></span>';
+    wrapper.appendChild(typingDiv);
+
+    messagesEl.appendChild(wrapper);
+    currentAssistantEl = { wrapper, toolsDiv, typingDiv, bubbleEl: null };
+    scrollBottom();
+    return currentAssistantEl;
+  }
+
+  function addToolEvent(ctx, type, text, duration) {
+    const div = document.createElement('div');
+    div.className = `tool-event ${type}`;
+    div.innerHTML = `<span class="icon"></span><span class="label">${escapeHtml(text)}</span>${duration ? `<span class="duration">${duration}ms</span>` : ''}`;
+    ctx.toolsDiv.appendChild(div);
+    scrollBottom();
+  }
+
+  function finishAssistantMessage(ctx, markdown) {
+    if (ctx.typingDiv) ctx.typingDiv.remove();
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    bubble.innerHTML = marked.parse(markdown);
+    ctx.wrapper.appendChild(bubble);
+    ctx.bubbleEl = bubble;
+    scrollBottom();
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function handleEvent(event) {
+    if (!currentAssistantEl) currentAssistantEl = beginAssistantMessage();
+    const ctx = currentAssistantEl;
+
+    switch (event.type) {
+      case 'thinking':
+        addToolEvent(ctx, 'thinking', event.message || '考え中...', null);
+        break;
+      case 'tool_start':
+        addToolEvent(ctx, 'tool_start', `${event.tool}(${JSON.stringify(event.args || {}).slice(0, 60)})`, null);
+        break;
+      case 'tool_end':
+        addToolEvent(ctx, 'tool_end', `${event.tool} 完了`, event.duration);
+        break;
+      case 'tool_error':
+        addToolEvent(ctx, 'tool_error', `${event.tool}: ${event.error}`, null);
+        break;
+      case 'done':
+        finishAssistantMessage(ctx, event.answer || '(応答なし)');
+        currentAssistantEl = null;
+        busy = false;
+        setInputEnabled(true);
+        break;
+      case 'error':
+        finishAssistantMessage(ctx, `**エラー**: ${event.message}`);
+        currentAssistantEl = null;
+        busy = false;
+        setInputEnabled(true);
+        break;
+    }
+  }
+
+  function setInputEnabled(enabled) {
+    inputEl.disabled = !enabled;
+    sendBtn.disabled = !enabled;
+    if (enabled) inputEl.focus();
+  }
+
+  function connect() {
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    ws = new WebSocket(`${proto}//${location.host}/?sessionId=${sessionId}`);
+
+    ws.onopen = () => {
+      setStatus('connected', '接続済み');
+      setInputEnabled(true);
+      // If server needs password, it will reject first query — handled in onmessage
+    };
+
+    ws.onclose = () => {
+      setStatus('error', '切断 — 再接続中...');
+      setInputEnabled(false);
+      setTimeout(connect, 3000);
+    };
+
+    ws.onerror = () => {
+      setStatus('error', '接続エラー');
+    };
+
+    ws.onmessage = ({ data }) => {
+      let event;
+      try { event = JSON.parse(data); } catch { return; }
+
+      if (event.type === 'error' && event.message === 'Unauthorized') {
+        // Show password screen
+        password = '';
+        sessionStorage.removeItem('dexterPassword');
+        pwScreen.classList.remove('hidden');
+        $('pw-error').textContent = 'パスワードが必要です';
+        if (currentAssistantEl) {
+          currentAssistantEl.wrapper.remove();
+          currentAssistantEl = null;
+        }
+        busy = false;
+        return;
+      }
+
+      handleEvent(event);
+    };
+  }
+
+  function sendQuery(text) {
+    if (!ws || ws.readyState !== WebSocket.OPEN || busy || !text.trim()) return;
+    busy = true;
+    addUserMessage(text);
+    beginAssistantMessage();
+    setInputEnabled(false);
+    ws.send(JSON.stringify({ type: 'query', text, password }));
+  }
+
+  // Input auto-resize
+  inputEl.addEventListener('input', () => {
+    inputEl.style.height = 'auto';
+    inputEl.style.height = Math.min(inputEl.scrollHeight, 160) + 'px';
+  });
+
+  inputEl.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      const text = inputEl.value.trim();
+      if (text) { sendQuery(text); inputEl.value = ''; inputEl.style.height = 'auto'; }
+    }
+  });
+
+  sendBtn.addEventListener('click', () => {
+    const text = inputEl.value.trim();
+    if (text) { sendQuery(text); inputEl.value = ''; inputEl.style.height = 'auto'; }
+  });
+
+  // Password screen
+  function submitPassword() {
+    const pw = $('pw-input').value;
+    if (!pw) { $('pw-error').textContent = 'パスワードを入力してください'; return; }
+    password = pw;
+    sessionStorage.setItem('dexterPassword', pw);
+    pwScreen.classList.add('hidden');
+    $('pw-input').value = '';
+    $('pw-error').textContent = '';
+  }
+  $('pw-submit').addEventListener('click', submitPassword);
+  $('pw-input').addEventListener('keydown', e => { if (e.key === 'Enter') submitPassword(); });
+
+  connect();
+</script>
+</body>
+</html>
