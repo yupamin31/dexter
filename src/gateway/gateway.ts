@@ -6,6 +6,7 @@ import {
   sendMessageWhatsApp,
   type WhatsAppInboundMessage,
 } from './channels/whatsapp/index.js';
+import { startHttpChannel, type HttpInboundMessage } from './channels/http/index.js';
 import { resolveRoute } from './routing/resolve-route.js';
 import { resolveSessionStorePath, upsertSessionMeta } from './sessions/store.js';
 import { loadGatewayConfig, type GatewayConfig } from './config.js';
@@ -204,6 +205,38 @@ async function handleInbound(cfg: GatewayConfig, inbound: WhatsAppInboundMessage
   }
 }
 
+async function handleHttpInbound(inbound: HttpInboundMessage): Promise<void> {
+  const cfg = loadGatewayConfig();
+  const route = resolveRoute({
+    cfg,
+    channel: 'http',
+    accountId: inbound.accountId,
+    peer: { kind: 'direct', id: inbound.from },
+  });
+
+  const storePath = resolveSessionStorePath(route.agentId);
+  upsertSessionMeta({
+    storePath,
+    sessionKey: route.sessionKey,
+    channel: 'http',
+    to: inbound.from,
+    accountId: route.accountId,
+    agentId: route.agentId,
+  });
+
+  const model = getSetting('modelId', 'gpt-5.4') as string;
+  const modelProvider = getSetting('provider', 'openai') as string;
+
+  await runAgentForMessage({
+    sessionKey: route.sessionKey,
+    query: inbound.body,
+    model,
+    modelProvider,
+    channel: 'http',
+    onEvent: inbound.onEvent,
+  });
+}
+
 export async function startGateway(params: { configPath?: string } = {}): Promise<GatewayService> {
   const cfg = loadGatewayConfig(params.configPath);
   const plugin = createWhatsAppPlugin({
@@ -222,9 +255,17 @@ export async function startGateway(params: { configPath?: string } = {}): Promis
   ensureHeartbeatCronJob(params.configPath);
   const cron = startCronRunner({ configPath: params.configPath });
 
+  // HTTP browser channel
+  let stopHttp: (() => void) | undefined;
+  const httpCfg = cfg.channels?.http;
+  if (httpCfg?.enabled !== false && httpCfg) {
+    stopHttp = startHttpChannel(httpCfg, handleHttpInbound);
+  }
+
   return {
     stop: async () => {
       cron.stop();
+      stopHttp?.();
       await manager.stopAll();
     },
     snapshot: () => manager.getSnapshot(),
